@@ -18,6 +18,8 @@
 #include "sphere.h"
 
 #include <iostream>
+#include <sys/mman.h>
+#include <unistd.h>
 
 
 color ray_color(const ray& r, const hittable& world, int depth) {
@@ -87,6 +89,23 @@ hittable_list random_scene() {
     return world;
 }
 
+void render_image(int image_height, int image_width, int samples_per_pixel, int max_depth, color* rendered_image,
+                  camera cam, hittable_list world, int max_parallelism, int n) {
+
+    for (int j = image_height-1-n; j >= 0; j -= max_parallelism) {
+        std::cerr << "\rScanlines remaining: " << j - n << ' ' << std::flush;
+        for (int i = 0; i < image_width; ++i) {
+            color pixel_color(0,0,0);
+            for (int s = 0; s < samples_per_pixel; ++s) {
+                auto u = (i + random_double()) / (image_width-1);
+                auto v = (j + random_double()) / (image_height-1);
+                ray r = cam.get_ray(u, v);
+                pixel_color += ray_color(r, world, max_depth);
+            }
+            write_to_array(rendered_image, pixel_color, samples_per_pixel, i, j, image_width);
+        }
+    }
+}
 
 int main() {
 
@@ -114,20 +133,30 @@ int main() {
 
     // Render
 
+    int parallelism = 8;
+
     std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
 
-    for (int j = image_height-1; j >= 0; --j) {
-        std::cerr << "\rScanlines remaining: " << j << ' ' << std::flush;
-        for (int i = 0; i < image_width; ++i) {
-            color pixel_color(0,0,0);
-            for (int s = 0; s < samples_per_pixel; ++s) {
-                auto u = (i + random_double()) / (image_width-1);
-                auto v = (j + random_double()) / (image_height-1);
-                ray r = cam.get_ray(u, v);
-                pixel_color += ray_color(r, world, max_depth);
-            }
-            write_color(std::cout, pixel_color, samples_per_pixel);
+    int image_size_in_bytes = sizeof(color) * image_width * image_height;
+    auto *rendered_image = (color *) mmap(nullptr, image_size_in_bytes,
+           PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+
+    int status = 0;
+
+    for (int i = 0; i < parallelism; i++) {
+        if (fork() == 0) {
+            render_image(image_height, image_width, samples_per_pixel, max_depth, rendered_image, cam, world,
+                         parallelism, i);
+            exit(0);
         }
+    }
+
+    while (wait(&status) > 0);
+
+    for (int i = image_width * image_height - 1; i >= 0; i--) {
+        std::cout << static_cast<int>(256 * clamp(rendered_image[i].x(), 0.0, 0.999)) << ' '
+                  << static_cast<int>(256 * clamp(rendered_image[i].y(), 0.0, 0.999)) << ' '
+                  << static_cast<int>(256 * clamp(rendered_image[i].z(), 0.0, 0.999)) << '\n';
     }
 
     std::cerr << "\nDone.\n";
