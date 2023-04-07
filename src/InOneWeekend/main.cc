@@ -90,10 +90,10 @@ hittable_list random_scene() {
 }
 
 void render_image(int image_height, int image_width, int samples_per_pixel, int max_depth, color *rendered_image,
-                  camera cam, hittable_list world, int max_parallelism, int n) {
+                  camera cam, const hittable_list &world, int parallelism, int line_number) {
 
-    for (int j = image_height - 1 - n; j >= 0; j -= max_parallelism) {
-        std::cerr << "\rScanlines remaining: " << j - n << ' ' << std::flush;
+    for (int j = image_height - 1 - line_number; j >= 0; j -= parallelism) {
+        std::cerr << "\rScanlines remaining: " << j - line_number << ' ' << std::flush;
         for (int i = 0; i < image_width; ++i) {
             color pixel_color(0, 0, 0);
             for (int s = 0; s < samples_per_pixel; ++s) {
@@ -133,25 +133,23 @@ int main() {
 
     // Render
 
-    int parallelism = 8;
-
-    std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
-
     int image_size_in_bytes = sizeof(color) * image_width * image_height;
     auto *rendered_image = (color *) mmap(nullptr, image_size_in_bytes,
                                           PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 
+    int parallelism = 8;
     int status = 0;
 
-    for (int i = 0; i < parallelism; i++) {
-        if (fork() == 0) {
+    for (int i = 0; i < parallelism; ++i) {
+        auto pid = fork();
+        if (pid == 0) {
             render_image(image_height, image_width, samples_per_pixel, max_depth, rendered_image, cam, world,
                          parallelism, i);
-            exit(0);
+            exit(1);
         }
     }
-
     while (wait(&status) > 0);
+    std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
 
     for (int i = image_width * image_height - 1; i >= 0; i--) {
         std::cout << static_cast<int>(256 * clamp(rendered_image[i].x(), 0.0, 0.999)) << ' '
