@@ -81,10 +81,10 @@ hittable_list random_scene() {
     world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, material1));
 
     auto material2 = make_shared<lambertian>(color(0.4, 0.2, 0.1));
-    world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, material2));
+    world.add(make_shared<sphere>(point3(-4, 1, 0), 1.2, material2));
 
     auto material3 = make_shared<metal>(color(0.7, 0.6, 0.5), 0.0);
-    world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, material3));
+    world.add(make_shared<sphere>(point3(4, 1, 0), 0.8, material3));
 
     return world;
 }
@@ -136,6 +136,7 @@ int main() {
     int image_size_in_bytes = sizeof(color) * image_width * image_height;
     auto *rendered_image = (color *) mmap(nullptr, image_size_in_bytes,
                                           PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    auto t_start = std::chrono::high_resolution_clock::now();
 
     int parallelism = 8;
     int status = 0;
@@ -156,6 +157,10 @@ int main() {
                   << static_cast<int>(256 * clamp(rendered_image[i].y(), 0.0, 0.999)) << ' '
                   << static_cast<int>(256 * clamp(rendered_image[i].z(), 0.0, 0.999)) << '\n';
     }
+
+    auto t_end = std::chrono::high_resolution_clock::now();
+    double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+    std::cerr << '\n' << elapsed_time_ms << "ms \n";
 
     std::cerr << "\nDone.\n";
 }
