@@ -23,6 +23,8 @@
 #include "texture.h"
 
 #include <iostream>
+#include <sys/mman.h>
+#include <unistd.h>
 
 
 color ray_color(const ray& r, const color& background, const hittable& world, int depth) {
@@ -245,7 +247,7 @@ hittable_list final_scene() {
     boundary = make_shared<sphere>(point3(0,0,0), 5000, make_shared<dielectric>(1.5));
     objects.add(make_shared<constant_medium>(boundary, .0001, color(1,1,1)));
 
-    auto emat = make_shared<lambertian>(make_shared<image_texture>("earthmap.jpg"));
+    auto emat = make_shared<lambertian>(make_shared<image_texture>("../images/earthmap.jpg"));
     objects.add(make_shared<sphere>(point3(400,200,400), 100, emat));
     auto pertext = make_shared<noise_texture>(0.1);
     objects.add(make_shared<sphere>(point3(220,280,300), 80, make_shared<lambertian>(pertext)));
@@ -267,15 +269,33 @@ hittable_list final_scene() {
     return objects;
 }
 
+void render_image(int image_height, int image_width, int samples_per_pixel, int max_depth, color *rendered_image,
+                  camera cam, const hittable_list &world, vec3 background, int parallelism, int line_number) {
+
+    for (int j = image_height - 1 - line_number; j >= 0; j -= parallelism) {
+        std::cerr << "\rScanlines remaining: " << j - line_number << ' ' << std::flush;
+        for (int i = 0; i < image_width; ++i) {
+            color pixel_color(0, 0, 0);
+            for (int s = 0; s < samples_per_pixel; ++s) {
+                auto u = (i + random_double()) / (image_width - 1);
+                auto v = (j + random_double()) / (image_height - 1);
+                ray r = cam.get_ray(u, v);
+                pixel_color += ray_color(r, background, world, max_depth);
+            }
+            write_to_array(rendered_image, pixel_color, samples_per_pixel, i, j, image_width);
+        }
+    }
+}
+
 
 int main() {
 
     // Image
 
     auto aspect_ratio = 16.0 / 9.0;
-    int image_width = 400;
-    int samples_per_pixel = 100;
-    int max_depth = 50;
+    int image_width = 1200;
+    int samples_per_pixel = 120;
+    int max_depth = 60;
 
     // World
 
@@ -287,14 +307,14 @@ int main() {
     auto aperture = 0.0;
     color background(0,0,0);
 
-    switch (0) {
+    switch (8) {
         case 1:
             world = random_scene();
             background = color(0.70, 0.80, 1.00);
             lookfrom = point3(13,2,3);
             lookat = point3(0,0,0);
-            vfov = 20.0;
-            aperture = 0.1;
+            vfov = 50.0;
+            aperture = 0.05;
             break;
 
         case 2:
@@ -334,7 +354,7 @@ int main() {
             world = cornell_box();
             aspect_ratio = 1.0;
             image_width = 600;
-            samples_per_pixel = 200;
+            samples_per_pixel = 400;
             lookfrom = point3(278, 278, -800);
             lookat = point3(278, 278, 0);
             vfov = 40.0;
@@ -371,21 +391,28 @@ int main() {
 
     // Render
 
-    std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
+    int image_size_in_bytes = sizeof(color) * image_width * image_height;
+    auto *rendered_image = (color *) mmap(nullptr, image_size_in_bytes,
+                                          PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 
-    for (int j = image_height-1; j >= 0; --j) {
-        std::cerr << "\rScanlines remaining: " << j << ' ' << std::flush;
-        for (int i = 0; i < image_width; ++i) {
-            color pixel_color(0,0,0);
-            for (int s = 0; s < samples_per_pixel; ++s) {
-                auto u = (i + random_double()) / (image_width-1);
-                auto v = (j + random_double()) / (image_height-1);
-                ray r = cam.get_ray(u, v);
-                pixel_color += ray_color(r, background, world, max_depth);
-            }
-            write_color(std::cout, pixel_color, samples_per_pixel);
+    int parallelism = 8;
+    int status = 0;
+
+    for (int i = 0; i < parallelism; ++i) {
+        if (fork() == 0) {
+            render_image(image_height, image_width, samples_per_pixel, max_depth, rendered_image, cam, world,
+                         background, parallelism, i);
+            exit(0);
         }
     }
 
+    while (wait(&status) > 0);
+
+    std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
+    for (int i = image_width * image_height - 1; i >= 0; i--) {
+        std::cout << static_cast<int>(256 * clamp(rendered_image[i].x(), 0.0, 0.999)) << ' '
+                  << static_cast<int>(256 * clamp(rendered_image[i].y(), 0.0, 0.999)) << ' '
+                  << static_cast<int>(256 * clamp(rendered_image[i].z(), 0.0, 0.999)) << '\n';
+    }
     std::cerr << "\nDone.\n";
 }
