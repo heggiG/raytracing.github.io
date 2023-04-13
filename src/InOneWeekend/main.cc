@@ -81,10 +81,10 @@ hittable_list random_scene() {
     world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, material1));
 
     auto material2 = make_shared<lambertian>(color(0.4, 0.2, 0.1));
-    world.add(make_shared<sphere>(point3(-4, 1, 0), 1.2, material2));
+    world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, material2));
 
     auto material3 = make_shared<metal>(color(0.7, 0.6, 0.5), 0.0);
-    world.add(make_shared<sphere>(point3(4, 1, 0), 0.8, material3));
+    world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, material3));
 
     return world;
 }
@@ -114,7 +114,7 @@ int main() {
     const auto aspect_ratio = 16.0 / 10.0;
     const int image_width = 1200;
     const int image_height = static_cast<int>(image_width / aspect_ratio);
-    const int samples_per_pixel = 10;
+    const int samples_per_pixel = 100;
     const int max_depth = 50;
 
     // World
@@ -136,6 +136,7 @@ int main() {
     int image_size_in_bytes = sizeof(color) * image_width * image_height;
     auto *rendered_image = (color *) mmap(nullptr, image_size_in_bytes,
                                           PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+
     auto t_start = std::chrono::high_resolution_clock::now();
 
     int parallelism = 8;

@@ -53,7 +53,7 @@ void write_to_array(color* array, color pixel_color, int samples_per_pixel, int 
     r = sqrt(scale * r);
     g = sqrt(scale * g);
     b = sqrt(scale * b);
-    array[x + (y * image_width)] = color(r, g, b);
+    array[(image_width - 1 - x) + (y * image_width)] = color(r, g, b);
 }
 
 #endif
